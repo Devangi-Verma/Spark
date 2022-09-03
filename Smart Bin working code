@@ -1,0 +1,303 @@
+from email import message
+import speech_recognition as sr
+import pyttsx3
+import time
+from twilio.rest import Client
+import smtplib
+from email.message import EmailMessage
+import RPi.GPIO as GPIO
+
+#-------------------------------------------initial setup------------------------------------------------------
+flag=True
+message_send=False
+
+listener = sr.Recognizer()
+player = pyttsx3.init()
+pass1 = 'ayush'
+pass3 = 'sigma'
+
+
+account_sid = 'ACc94cbabb68b7c30f4dccb4d8e7938c5e'
+auth_token = '59bcafb49a84eee8ec3b6041bf931550'
+
+sid_dev= 'AC1e27385eed56ac4ebfb85d1237677b49'
+token_dev= '57d43a0bc6c9145c4121d6c24f032124'
+
+sid_chandni= 'AC34ef68abd44cc49da6071b78d4842b78'
+token_chandni= '1e58699d9177718a93c3edadae01f704'
+
+client = Client(account_sid, auth_token)
+
+client_dev = Client(sid_dev, token_dev)
+
+client_chandni = Client(sid_chandni,token_chandni)
+
+GPIO.setmode(GPIO.BOARD)
+
+#--------------------------------------pin numbers-------------------------------------------------------------
+ultrasonic_trig=37
+ultrasonic_echo=36
+red_LED=11
+green_LED=29
+white_LED=12
+servo_motor=13
+ 
+  
+#---------------------------------setting up the input/output modes--------------------------------------------
+GPIO.setup(ultrasonic_trig,GPIO.OUT)
+GPIO.setup(ultrasonic_echo,GPIO.IN)
+GPIO.setup(red_LED,GPIO.OUT)
+GPIO.setup(green_LED,GPIO.OUT)
+GPIO.setup(white_LED,GPIO.OUT)
+GPIO.setup(servo_motor,GPIO.OUT)
+pwm=GPIO.PWM(servo_motor,50)          #To handle the analog device with digital signal at 50Hz pwm is the variable for servo motor
+pwm.start(0)                                    #start at 0 angle
+time.sleep(2)                                   #Used to settle the servo motor
+
+#------------------------------method for messsage alert---------------------------------------------------------
+def email_alert(subject, body, to):
+    msg = EmailMessage()
+    msg.set_content(body)
+    msg['subject'] = subject
+    msg['to'] = to
+    
+    user = 'digi.binn@gmail.com'
+    msg['from'] = user
+    password = 'rpzyxakrrpmesvyt'
+    
+    server = smtplib.SMTP('smtp.gmail.com', 587)
+    server.starttls()
+    server.login(user, password)
+    server.send_message(msg)
+    server.quit()
+
+#---------------------------------method for depth measurement--------------------------------------------------
+def ultrasonic_sensor():
+    GPIO.output(ultrasonic_trig,False)          #To settle the sensor---->try after removing it
+    time.sleep(0.2)
+    GPIO.output(ultrasonic_trig,True)           #send the pulse
+    time.sleep(0.00001)                         #for 10 micro-seconds
+    GPIO.output(ultrasonic_trig,False)          #low the triger pin
+    while GPIO.input(ultrasonic_echo)==0:       #monitor the echo pin for finding start time
+        pulse_start=time.time()
+    while GPIO.input(ultrasonic_echo)==1:       #monitor the echo pin for finding end time
+        pulse_end=time.time()
+    pulse_duration=pulse_end-pulse_start        #total time duration
+    distance=int(pulse_duration*17150)          #total height
+    return distance
+
+#---------------------------------methods for emergency recorded calls--------------------------------------------
+def listen():
+    try:
+        text_command = ''
+        with sr.Microphone() as input_device:
+            # print("I am ready, Listening ....")
+            player.say('I am ready, Listening ....')
+            GPIO.output(white_LED,True)
+            player.runAndWait()
+            voice_content = listener.listen(input_device, phrase_time_limit=3)
+
+            # print(text_command)
+            text_command = listener.recognize_google(voice_content, language='en_IN')
+            text_command = text_command.lower()
+    except Exception:
+            time.sleep(2)
+            listen()
+
+    return text_command
+
+def listen1():
+    try:
+        text_command = ''
+        with sr.Microphone() as input_device:
+            # print("I am ready, Listening ....")
+            player.say('I am ready, Listening ....')
+            GPIO.output(white_LED,True)
+            player.runAndWait()
+            voice_content = listener.listen(input_device, phrase_time_limit=3)
+
+            # print(text_command)
+            text_command = listener.recognize_google(voice_content, language='en_IN')
+            text_command = text_command.lower()
+    except Exception:
+            text_command='*'
+
+    return text_command
+
+
+
+def talk(text):
+    player.say(text)
+    player.runAndWait()
+
+
+def run_voice_bot():
+     global add 
+     command = listen1()
+     if '*' in command:
+         pass
+     if "hp" in command:   #only comparison for lower case is required
+        command = command.replace("hp", "")                                         #Why it is required??
+        if "open" in command:
+            if flag==True:
+                pwm.ChangeDutyCycle(2)
+                print("opened")
+                time.sleep(1)
+                info = 'lid is opened'
+                talk(info)
+                time.sleep(5)
+                print("closing")
+                info= 'lid is going to close'
+                talk(info)
+                pwm.ChangeDutyCycle(12)
+                time.sleep(1)
+                info='Thank you for contributing in swach bharat abhiyaan'
+                talk(info)
+            else:
+                info='sorry   lid cannot be opened as the smart bin is full'
+                talk(info)
+
+        elif "tell me address" in command:
+            try:
+                talk(add)
+            except Exception:
+                talk("Nothing")
+
+        elif "call police" in command:
+            talk('tell me  what happened..')
+            info=listen()
+            talk('ok wait     i am calling')
+            time.sleep(1)
+            try:
+                call = client.calls.create(
+                    twiml='<Response><Say>Hello Police I am Smart bin speaking from ' + add + str(info) + '  I am repeating once again ' + str(info) + 'Thank you !!! </Say></Response>',
+                    to='+919455963915',
+                    from_='+16673828445'
+                )
+            except:
+                call = client.calls.create(
+                    twiml='<Response><Say>Hello Police I am Smart bin speaking ' + str(info) + '  I am repeating once again ' + str(info) + 'Thank you !!! </Say></Response>',
+                    to='+919455963915',
+                    from_='+16673828445'
+                )
+
+        elif "call fire brigade" in command:
+            talk('tell me   what happened..')
+            info=listen()
+            talk('ok wait     i am calling')
+            time.sleep(1)
+            try:
+                call = client_chandni.calls.create(
+                    twiml='<Response><Say>Hello Police I am Smart bin speaking from ' + add + str(info) + '  I am repeating once again ' + str(info) + 'Thank you !!! </Say></Response>',
+                    to='+919650174724',
+                    from_='+13073175809'
+                )
+            except:
+                call = client_chandni.calls.create(
+                    twiml='<Response><Say>Hello Police I am Smart bin speaking ' + str(info) + '  I am repeating once again ' + str(info) + 'Thank you !!! </Say></Response>',
+                    to='+919650174724',
+                    from_='+13073175809'
+                )
+
+        elif "call ambulance" in command:
+            talk('tell me   what happened..')
+            info=listen()
+            talk('ok wait     i am calling')
+            time.sleep(1)
+            try:
+                call = client_dev.calls.create(
+                    twiml='<Response><Say>Hello Police I am Smart bin speaking from ' + add + str(info) + '  I am repeating once again ' + str(info) + 'Thank you !!! </Say></Response>',
+                    to='+919953519246',
+                    from_='+17164543568'
+                )
+            except:
+                call = client_dev.calls.create(
+                    twiml='<Response><Say>Hello Police I am Smart bin speaking ' + str(info) + '  I am repeating once again ' + str(info) + 'Thank you !!! </Say></Response>',
+                    to='+919953519246',
+                    from_='+17164543568'
+                )
+
+        elif "set address" in command:
+            talk('tell password')
+            pass2=listen()
+            if(pass2 == pass1 or pass3==pass2):
+                talk('Hello Admin')
+                talk('Please tell me address')
+                add = listen()
+                talk('Address set to')
+                talk(add)
+                talk('Thank You')
+            else :
+                talk('Sorry ! only Admin has privilege to set address')
+                talk('Thank you')
+
+        elif "describe yourself" in command:
+            first='first   i am based on Speech recognition'
+            talk(first)
+            second='second   i have automatic open and shut system'
+            talk(second)
+            third='third  if the bin is full then the lid will not open and i also notify the owner of the bin to clean the trash'
+            talk(third)
+            forth='forth  in case of emergency i can call police   Fire brigade and Ambulance'
+            talk(forth)
+            talk("Thank You")
+            
+        elif "clean trash" in command:
+            talk('tell password')
+            pass2=listen()
+            if(pass2 == pass1 or pass3==pass2):
+                talk('Hello Admin')
+                talk('Now you can clean the trash')
+                pwm.ChangeDutyCycle(2)
+                time.sleep(1)
+                info = 'lid is opened'
+                talk(info)
+                command=listen1()
+                if "hp" in command:   #only comparison for lower case is required
+                    command = command.replace("hp", "")
+                    if "of" in command:
+                        pwm.ChangeDutyCycle(12)
+                        time.sleep(1)
+                        talk("Thank you for cleaning trash")
+                    else :
+                        talk("Sorry, I am unable to find what you are looking for")
+                        
+            else:
+                talk('Sorry ! only Admin has privilege to clean trash')
+                talk('Thank you')
+# servo off                    
+                #pwm.ChangeDutyCycle(12)
+                #time.sleep(1)
+                
+                
+
+        else:
+            talk("Sorry, I am unable to find what you are looking for")
+
+
+#-------------------------------------------main code----------------------------------------------------------
+
+GPIO.output(white_LED,True)
+pwm.ChangeDutyCycle(12)
+time.sleep(1)
+
+while True:
+    GPIO.output(white_LED,False)
+    time.sleep(0.5)
+    #talk("hello1")
+    depth=ultrasonic_sensor()
+    #talk("hello2")
+    if depth<=5:
+        GPIO.output(green_LED,False)
+        GPIO.output(red_LED,True)
+        flag=False
+        if message_send==False:
+            email_alert('Attention!!','This is alert from smart bin, id no. 5 near ' + str(add) +'.\nThis bin is full. Please take the required actions to clean the trash. \n\n\nThank You!!!' , 'c.k.mauraya26@gmail.com')
+            message_send=True
+    else:
+        GPIO.output(red_LED,False)
+        GPIO.output(green_LED,True)
+        flag=True
+        message_send=False
+    run_voice_bot()
+    time.sleep(0.5)
